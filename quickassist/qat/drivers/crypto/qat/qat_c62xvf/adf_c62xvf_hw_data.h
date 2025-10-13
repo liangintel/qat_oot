@@ -1,0 +1,31 @@
+/* SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0-only) */
+/* Copyright(c) 2014 - 2021 Intel Corporation */
+#ifndef ADF_C62XVF_HW_DATA_H_
+#define ADF_C62XVF_HW_DATA_H_
+
+#define ADF_C62XIOV_PMISC_BAR 1
+#define ADF_C62XIOV_ACCELERATORS_MASK 0x1
+#define ADF_C62XIOV_ACCELENGINES_MASK 0x1
+#define ADF_C62XIOV_MAX_ACCELERATORS 1
+#define ADF_C62XIOV_MAX_ACCELENGINES 1
+#define ADF_C62XIOV_RX_RINGS_OFFSET 8
+#define ADF_C62XIOV_TX_RINGS_MASK 0xFF
+#define ADF_C62XIOV_ETR_BAR 0
+#define ADF_C62XIOV_ETR_MAX_BANKS 1
+#define ADF_C62XIOV_PF2VF_OFFSET	0x200
+#define ADF_C62XIOV_VINTMSK_OFFSET	0x208
+#define ADF_C62XIOV_VINTSOU_OFFSET	0x204
+#define ADF_C62X_VFFUSECTL_OFFSET 0x40
+#define ADF_C62X_VFLEGFUSE_OFFSET 0x4C
+
+/* Interrupt Coalesce Timer Defaults */
+#define ADF_C62XIOV_ACCEL_DEF_COALESCE_TIMER 10000
+#define ADF_C62XIOV_COALESCING_MIN_TIME 0x1FF
+#define ADF_C62XIOV_COALESCING_MAX_TIME 0xFFFFF
+#define ADF_C62XIOV_COALESCING_DEF_TIME 0x27FF
+
+#define ADF_C62X_AE_FREQ (685 * 1000000)
+
+void adf_init_hw_data_c62xiov(struct adf_hw_device_data *hw_data);
+void adf_clean_hw_data_c62xiov(struct adf_hw_device_data *hw_data);
+#endif

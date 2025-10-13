@@ -1,0 +1,206 @@
+#!/bin/bash
+#################################################################
+#
+#   BSD LICENSE
+# 
+#   Copyright(c) 2007-2023 Intel Corporation. All rights reserved.
+#   All rights reserved.
+# 
+#   Redistribution and use in source and binary forms, with or without
+#   modification, are permitted provided that the following conditions
+#   are met:
+# 
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in
+#       the documentation and/or other materials provided with the
+#       distribution.
+#     * Neither the name of Intel Corporation nor the names of its
+#       contributors may be used to endorse or promote products derived
+#       from this software without specific prior written permission.
+# 
+#   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+#   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+#   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+#   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+#   OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+#   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+#   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+#   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+#   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+#   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+#   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+#  version: QAT20.L.1.2.30-00090
+#
+#################################################################
+
+SYSFS_MDEV="/sys/class/mdev_bus"
+DEBUGFS="/sys/kernel/debug"
+MDEV_TYPES="4xxx-vqat_sym 4xxx-vqat_asym 4xxx-vqat_dc"
+MDEV_PREFIX="4xxx-vqat"
+
+usage()
+{
+    echo
+    echo --------------------------------------------------------
+    echo USAGE:
+    echo --------------------------------------------------------
+    echo "#  $0 show||create||remove"
+    echo "#  show:               Show all VQATs in the system"
+    echo "#"
+    echo "#  create BDF TYPE:    Create VQAT from PF@BDF"
+    echo "#                      TYPE: sym|asym|dc"
+    echo "#"
+    echo "#  remove UUID:        Remove VQAT UUID"
+    echo --------------------------------------------------------
+
+    exit 1
+}
+
+prerequisite_check()
+{
+    if [ ! -d $DEBUGFS ]; then
+        echo "$DEBUGFS not exist"
+        exit 1
+    fi
+
+    if [ ! -d $SYSFS_MDEV ]; then
+        echo "$SYSFS_MDEV not exist"
+        exit 1
+    fi
+}
+
+scan_vqat_from_pf()
+{
+    PF_BDF=$(ls $SYSFS_MDEV | grep $1)
+    SYSFS_DEV=${SYSFS_MDEV}/${PF_BDF}/mdev_supported_types
+    INDEX=1
+
+    if [ ! -d $SYSFS_DEV ]; then
+        echo "Missing MDEV entry: $1"
+        return 1
+    fi
+
+    DEBUGFS_ENTRY=$DEBUGFS/$(ls $DEBUGFS | grep ${PF_BDF})
+
+    echo "BDF: ${PF_BDF}"
+
+    for TYPE in ${MDEV_TYPES}; do
+        if [ -f $SYSFS_DEV/$TYPE/available_instances ]; then
+            NUM_INSTANCE=$(cat $SYSFS_DEV/$TYPE/available_instances)
+            printf "\t%s\t : %d\n" "Available ${TYPE##*_}" $NUM_INSTANCE
+        fi
+    done
+
+    echo -e ""
+    echo -e "\tActive VQATs:"
+    echo -e "\t--------------------------------------------------------------"
+
+    printf "\t%s\t%s\t%36s\t%s\n" "INDEX" "TYPE" "UUID" "STATUS"
+    for TYPE in ${MDEV_TYPES}; do
+        if [ ! -f $SYSFS_DEV/$TYPE/available_instances ]; then
+            continue
+        fi
+
+        # For each of the active MDEV instances, print info
+        INSTANCE_LIST=$(ls $SYSFS_DEV/$TYPE/devices)
+        for INSTANCE in ${INSTANCE_LIST}; do
+            STATUS=$(cat $DEBUGFS_ENTRY/vqat/$INSTANCE/status/state | tr -d '\0')
+
+            printf "\t%d\t%s\t%s\t%s\n" $INDEX ${TYPE##*_} $INSTANCE $STATUS
+            ((INDEX++))
+        done
+    done
+
+    echo -e "\t--------------------------------------------------------------"
+    echo ""
+}
+
+show_vqats()
+{
+    if [ $# -eq 2 ]; then
+        scan_vqat_from_pf $2
+        exit $?
+    fi
+
+    PF_LIST=$(ls ${DEBUGFS} | grep qat | grep -v vf)
+    for PF in $PF_LIST; do
+        scan_vqat_from_pf ${PF##*_}
+    done
+
+    exit 0
+}
+
+create_vqat()
+{
+    test $# -eq 3 || usage
+
+    PF_BDF=$(ls $SYSFS_MDEV | grep $2)
+    SYSFS_DEV=${SYSFS_MDEV}/${PF_BDF}/mdev_supported_types
+    INDEX=1
+
+    if [ ! -d $SYSFS_DEV ]; then
+        echo "Missing MDEV entry: $SYSFS_DEV, device BDF format is incorrect"
+        exit 1
+    fi
+
+    if [ ! -d $SYSFS_DEV/${MDEV_PREFIX}_$3 ]; then
+        echo "Incorrect mdev type, please use sym|asym|dc as type"
+        exit 1
+    fi
+
+    UUID=$(uuidgen)
+    echo $UUID > $SYSFS_DEV/${MDEV_PREFIX}_$3/create
+    if [ $? -eq 0 ]; then
+        echo "VQAT-$3 created successfully, device name = $UUID"
+        exit 0
+    else
+        echo "Failed to create VQAT-$3"
+        exit 1
+    fi
+}
+
+remove_vqat()
+{
+    test $# -ne 2 && usage
+
+    UUID=$2
+
+    if [ ! -d /sys/bus/mdev/devices/$UUID ]; then
+        echo "VQAT not found, failed to remove $UUID"
+        exit 1
+    fi
+
+    echo 1 > /sys/bus/mdev/devices/$UUID/remove
+
+    if [ $? -eq 0 ]; then
+        echo "VQAT-$UUID removed successfully"
+        exit 0
+    else
+        echo "Failed to remove VQAT-$UUID, please check system log"
+        exit 1
+    fi
+}
+
+# Main()
+if [ $# -eq 0 ]; then
+    usage
+    exit 1
+fi
+
+prerequisite_check
+
+if [ $1 == "show" ]; then
+    show_vqats $*
+elif [ $1 == "create" ]; then
+    create_vqat $*
+elif [ $1 == "remove" ]; then
+    remove_vqat $*
+else
+    usage
+    exit 1
+fi
+
+exit 0

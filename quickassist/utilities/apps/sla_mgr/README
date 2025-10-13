@@ -1,0 +1,145 @@
+/****************************************************************************
+ *
+ * This file is provided under a dual BSD/GPLv2 license.  When using or
+ *   redistributing this file, you may do so under either license.
+ * 
+ *   GPL LICENSE SUMMARY
+ * 
+ *   Copyright(c) 2007-2023 Intel Corporation. All rights reserved.
+ * 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of version 2 of the GNU General Public License as
+ *   published by the Free Software Foundation.
+ * 
+ *   This program is distributed in the hope that it will be useful, but
+ *   WITHOUT ANY WARRANTY; without even the implied warranty of
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *   General Public License for more details.
+ * 
+ *   You should have received a copy of the GNU General Public License
+ *   along with this program; if not, write to the Free Software
+ *   Foundation, Inc., 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
+ *   The full GNU General Public License is included in this distribution
+ *   in the file called LICENSE.GPL.
+ * 
+ *   Contact Information:
+ *   Intel Corporation
+ * 
+ *   BSD LICENSE
+ * 
+ *   Copyright(c) 2007-2023 Intel Corporation. All rights reserved.
+ *   All rights reserved.
+ * 
+ *   Redistribution and use in source and binary forms, with or without
+ *   modification, are permitted provided that the following conditions
+ *   are met:
+ * 
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in
+ *       the documentation and/or other materials provided with the
+ *       distribution.
+ *     * Neither the name of Intel Corporation nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ * 
+ *   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ *   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ *   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ *   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ *   OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ *   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ *   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ *   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ *   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ *   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ *   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * 
+ * 
+ *  version: QAT20.L.1.2.30-00090
+ *
+ ****************************************************************************/
+
+==============================================================================
+
+
+SLA manager overview
+====================
+sla_mgr tool is used to create, update, delete, list and get SLA capabilites
+with a rate limiting feature v1 and v2 support.
+Some commands vary between feature generations and are marked by RL_V1/RL_V2.
+
+Enable RateLimiting Feature
+===========================
+RateLimiting feature is supported only in rate limiting firmware for
+cryptographic services.
+    * Install driver package in host with SRIOV enabled
+    * Update physical function configuration file to set RateLimitingEnabled=1
+      in [GENERAL] section
+    * Set ServicesEnabled to cy or sym or asym
+    * Perform qat_service shutdown and qat_service start
+
+SLA manager commands
+====================
+SLA manager executable is available in $ICP_ROOT/build/sla_mgr after
+the package is built and installed using ./configure; make install commands.
+
+Below are the commands to manage SLAs
+
+        *RL_V1*
+        Create SLA - ./sla_mgr create <vf_addr> <rate_in_sla_units> <service>
+        Update SLA - ./sla_mgr update <pf_addr> <sla_id> <rate_in_sla_units>
+
+        *RL_V2*
+        Create SLA - ./sla_mgr create <vf_addr> <cir> <pir> <service>
+        Update SLA - ./sla_mgr update <pf_addr> <sla_id> <cir> <pir>
+
+        Delete SLA - ./sla_mgr delete <pf_addr> <sla_id>
+        Delete all SLAs - ./sla_mgr delete_all <pf_addr>
+        Query SLA capabilities - ./sla_mgr caps <pf_addr>
+        Query list of SLAs - ./sla_mgr list <pf_addr>
+
+Options:
+      pf_addr           Physical address in bus:device:function(xx:xx.x) format
+      vf_addr           Virtual address in bus:device.function(xx:xx.x) format
+      service           Asym(=0) or Sym(=1) cryptographic services and
+                        *RL_V2*
+                        Dc(=2) compression services
+      rate_in_sla_units [0-MAX]. MAX is found by querying the capabilities
+                        1 rate_in_sla_units is equal to:
+                        1 operation per second - for asymmetric service
+                        1 Megabits per second - for symmetric service
+      cir/pir           [0-MAX]. MAX is found by querying the capabilities
+                        committed/peak information rate
+                        1 cir/pir unit is equal to:
+                        0.1 percent of available utilisation - for asym service
+                        1 Megabit per second - for sym/dc services
+      sla_id            Value returned by create command
+
+NOTES:
+      1. An SLA is uniquely identified by <pf_addr, sla_id>
+      2. For a given service, device would guarantee minimum rate_in_sla_units
+         throughput. Maximum throughput can be upto maximum capacity of device.
+
+Legal/Disclaimers
+===================
+INFORMATION IN THIS DOCUMENT IS PROVIDED IN CONNECTION WITH INTEL(R) PRODUCTS.
+NO LICENSE, EXPRESS OR IMPLIED, BY ESTOPPEL OR OTHERWISE, TO ANY INTELLECTUAL
+PROPERTY RIGHTS IS GRANTED BY THIS DOCUMENT. EXCEPT AS PROVIDED IN INTEL'S
+TERMS AND CONDITIONS OF SALE FOR SUCH PRODUCTS, INTEL ASSUMES NO LIABILITY
+WHATSOEVER, AND INTEL DISCLAIMS ANY EXPRESS OR IMPLIED WARRANTY, RELATING TO
+SALE AND/OR USE OF INTEL PRODUCTS INCLUDING LIABILITY OR WARRANTIES RELATING
+TO FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABILITY, OR INFRINGEMENT OF ANY
+PATENT, COPYRIGHT OR OTHER INTELLECTUAL PROPERTY RIGHT. Intel products are
+not intended for use in medical, life saving, life sustaining, critical control
+ or safety systems, or in nuclear facility applications.
+
+Intel may make changes to specifications and product descriptions at any time,
+without notice.
+
+(C) Intel Corporation 2008
+
+* Other names and brands may be claimed as the property of others.
+
+===============================================================================

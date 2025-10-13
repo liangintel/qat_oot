@@ -1,0 +1,6 @@
+# Kbuild file for out-of-tree driver only !!!DO NOT PUSH UPSTREAM!!!
+include $(src)/Makefile
+qat_vqat-$(QAT_UIO) +=
+ccflags-$(QAT_UIO) += -DQAT_UIO=y
+ccflags-$(ICP_HB_FAIL_SIM) += -DQAT_HB_FAIL_SIM=y
+

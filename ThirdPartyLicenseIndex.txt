@@ -1,0 +1,9 @@
+Format:
+Component
+	-> License/copyright file
+		-> code location/directories
+
+OpenSSL
+	LICENSE.APACHE
+		./quickassist/utilities/osal/src/linux/user_space/openssl/
+		./ThirdPartyNotice-openssl.txt
