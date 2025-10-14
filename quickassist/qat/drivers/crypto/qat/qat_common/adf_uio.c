@@ -319,25 +319,8 @@ static void adf_uio_cleanup_svm_orphan_from_pid(void *priv, u32 pid)
 
 static int adf_uio_open(struct uio_info *info, struct inode *inode)
 {
-	struct qat_uio_bundle_dev *priv = info->priv;
-	struct adf_accel_dev *accel_dev = priv->accel->accel_dev;
-	u32 bundle_nr = priv->hardware_bundle_number;
-
-	adf_dev_get(accel_dev);
-
-	if (!accel_dev->svm_enabled)
-		return 0;
-
-	if (ADF_UQ_GET_Q_MODE(accel_dev) == ADF_UQ_MODE)
-		adf_uq_set_mode(accel_dev, bundle_nr, ADF_UQ_MODE_POLLING);
-	else
-		adf_uq_set_mode(accel_dev, bundle_nr, ADF_UQ_MODE_DISABLE);
-
-	return adf_svm_bind_bank_with_pid(accel_dev,
-					  bundle_nr,
-					  current->tgid,
-					  adf_uio_cleanup_svm_orphan_from_pid,
-					  (void *)info);
+	/* major logic is in adf_uio_mmap */
+	return 0;
 }
 
 static int adf_uio_release(struct uio_info *info, struct inode *inode)
@@ -476,6 +459,9 @@ static int adf_uio_mmap(struct uio_info *info, struct vm_area_struct *vma)
 	int mi;
 	struct uio_mem *mem;
 	struct qat_uio_bundle_dev *priv = info->priv;
+	struct adf_accel_dev *accel_dev = priv->accel->accel_dev;
+	u32 bundle_nr = priv->hardware_bundle_number;
+	int ret;
 
 	if (vma->vm_start > vma->vm_end)
 		return -EINVAL;
@@ -494,6 +480,22 @@ static int adf_uio_mmap(struct uio_info *info, struct vm_area_struct *vma)
 		return -EINVAL;
 	}
 
+	if (accel_dev->svm_enabled)
+	{
+		if (ADF_UQ_GET_Q_MODE(accel_dev) == ADF_UQ_MODE)
+			adf_uq_set_mode(accel_dev, bundle_nr, ADF_UQ_MODE_POLLING);
+		else
+			adf_uq_set_mode(accel_dev, bundle_nr, ADF_UQ_MODE_DISABLE);
+
+		ret = adf_svm_bind_bank_with_pid(accel_dev,
+						bundle_nr,
+						current->tgid,
+						adf_uio_cleanup_svm_orphan_from_pid,
+						(void *)info);
+		if(ret)
+			return ret;
+	}
+
 	/* Increment a reference counter for the accel object. */
 	adf_uio_accel_ref(priv->accel);
 	/* Increment a reference counter for the bundle object. */
@@ -503,11 +505,18 @@ static int adf_uio_mmap(struct uio_info *info, struct vm_area_struct *vma)
 	vma->vm_ops = &adf_uio_mmap_operation;
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
-	return remap_pfn_range(vma,
+	ret = remap_pfn_range(vma,
 			       vma->vm_start,
 			       mem->addr >> PAGE_SHIFT,
 			       vma->vm_end - vma->vm_start,
 			       vma->vm_page_prot);
+
+	if(!ret)
+	{
+		adf_dev_get(accel_dev);
+	}
+
+	return ret;
 }
 
 static irqreturn_t adf_uio_isr_bundle(int irq, struct uio_info *info)
