@@ -290,12 +290,14 @@ int main(int argc, char** argv)
             ret = adf_ctl::perform_start_dev(dev_id);
             break;
         case adf_ctl::action::STOP:
+            std::cerr << "adf_ctl stop in" << std::endl;
             ret = adf_ctl::perform_stop_dev(dev_id);
             break;
         case adf_ctl::action::QUERY:
             ret = adf_ctl::perform_query_dev(dev_id);
             break;
         case adf_ctl::action::RESTART:
+            std::cerr << "adf_ctl restart in" << std::endl;
             ret = adf_ctl::perform_stop_dev(dev_id);
             if (ret != 0)
             {

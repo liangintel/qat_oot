@@ -76,6 +76,11 @@
 #include "global.h"
 #include "sections.h"
 #include "utils.h"
+#include <execinfo.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <string.h>
+#include <stdarg.h>
 
 class dev_config;
 int qat_file = -1;
@@ -211,10 +216,149 @@ int perform_start_dev(int dev_id)
     return ret;
 }
 
+void print_callstack() {
+    void *buffer[100];
+    int nptrs = backtrace(buffer, sizeof(buffer) / sizeof(buffer[0]));
+    char **strings = backtrace_symbols(buffer, nptrs);
+    
+    if (strings == NULL) {
+        perror("backtrace_symbols");
+        return;
+    }
+
+    printf("Call stack:=====\n");
+    for (int i = 0; i < nptrs; i++) {
+        printf("%s\n", strings[i]);
+    }
+    printf("=====\n");
+
+    free(strings);
+}
+
+void write_log(FILE *log, const char *format, ...) {
+    va_list args;
+    char buffer[4096];
+    
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    
+    printf("%s", buffer);
+    if (log != NULL) {
+        fprintf(log, "%s", buffer);
+    }
+}
+
+void print_process_info(pid_t pid, FILE *log) {
+    char path[PATH_MAX];
+    char exe_path[PATH_MAX];
+    char cmdline_path[PATH_MAX];
+    char cmdline[4096];
+    
+    // get exe path
+    snprintf(path, sizeof(path), "/proc/%d/exe", pid);
+    ssize_t len = readlink(path, exe_path, sizeof(exe_path) - 1);
+    if (len == -1) {
+        write_log(log, "Error getting exe path for PID %d: %s\n", pid, strerror(errno));
+        return;
+    }
+    exe_path[len] = '\0';
+    
+    // get cmdline
+    snprintf(cmdline_path, sizeof(cmdline_path), "/proc/%d/cmdline", pid);
+    FILE *fp = fopen(cmdline_path, "r");
+    if (fp) {
+        size_t nread = fread(cmdline, 1, sizeof(cmdline) - 1, fp);
+        fclose(fp);
+        cmdline[nread] = '\0';
+        
+        for (size_t i = 0; i < nread; i++) {
+            if (cmdline[i] == '\0') {
+                cmdline[i] = ' ';
+            }
+        }
+    } else {
+        strcpy(cmdline, "[unknown]");
+    }
+    
+    write_log(log, "PID %d:\n  Path: %s\n  Cmdline: %s\n\n", pid, exe_path, cmdline);
+}
+
+void print_process_hierarchy(pid_t start_pid, FILE *log) {
+    pid_t current_pid = start_pid;
+    int generation = 1;
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    
+    write_log(log, "\n[%04d-%02d-%02d %02d:%02d:%02d] Process hierarchy for parent of PID %d:\n",
+             t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+             t->tm_hour, t->tm_min, t->tm_sec, getpid());
+    
+    while (current_pid > 1) {
+        write_log(log, "Generation %d: ", generation++);
+        print_process_info(current_pid, log);
+        
+        char stat_path[PATH_MAX];
+        snprintf(stat_path, sizeof(stat_path), "/proc/%d/stat", current_pid);
+        
+        FILE *fp = fopen(stat_path, "r");
+        if (!fp) {
+            write_log(log, "Error opening stat file for PID %d: %s\n", current_pid, strerror(errno));
+            break;
+        }
+        
+        pid_t ppid;
+        if (fscanf(fp, "%*d %*s %*c %d", &ppid) != 1) {
+            fclose(fp);
+            write_log(log, "Error reading stat file for PID %d\n", current_pid);
+            break;
+        }
+        fclose(fp);
+        
+        current_pid = ppid;
+    }
+    
+    write_log(log, "Generation %d: ", generation);
+    print_process_info(1, log);
+}
+
+void print_parent_process_name() {
+    pid_t ppid = getppid();
+    char path[256];
+    char name[256];
+
+    // Open log file in append mode
+    FILE *log = fopen("/tmp/qat_adf_ctl.log", "a");
+    if (!log) {
+        perror("Failed to open log file");
+    }
+
+    // Read parent process name from /proc/[ppid]/comm
+    snprintf(path, sizeof(path), "/proc/%d/comm", ppid);
+    FILE *fp = fopen(path, "r");
+    if (fp) {
+        fgets(name, sizeof(name), fp);
+        write_log(log, "\n-----Parent process name: %s-----\n", name);
+        fclose(fp);
+    } else {
+        perror("Failed to open /proc/[ppid]/comm");
+    }
+
+    {
+        write_log(log, "---parent stack-------\n");
+        print_process_hierarchy(ppid, log);
+        write_log(log, "----------\n");
+    }
+    
+    fclose(log);
+}
+
 int perform_stop_dev(int dev_id)
 {
     adf_user_cfg_ctl_data ctl_data = { { 0 }, 0 };
     int ret = 0;
+    print_callstack();
+    print_parent_process_name();
     ctl_data.device_id = get_real_id(dev_id);
     if ((int)ctl_data.device_id == -1)
     {
