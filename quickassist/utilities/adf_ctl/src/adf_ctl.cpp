@@ -216,37 +216,49 @@ int perform_start_dev(int dev_id)
     return ret;
 }
 
+//liang, add for debug
+#include <execinfo.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <string.h>
+#include <stdarg.h>
+void write_log(FILE *log, const char *format, ...) {
+    va_list args;
+    char buffer[4096];
+
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+
+    printf("%s", buffer);
+    if (log != NULL) {
+        fprintf(log, "%s", buffer);
+    }
+}
+
 void print_callstack() {
     void *buffer[100];
     int nptrs = backtrace(buffer, sizeof(buffer) / sizeof(buffer[0]));
     char **strings = backtrace_symbols(buffer, nptrs);
+
+    FILE *log = fopen("/tmp/qat_callstack.log", "a");
+    if (!log) {
+        perror("Failed to open log file");
+    }
     
     if (strings == NULL) {
         perror("backtrace_symbols");
         return;
     }
 
-    printf("Call stack:=====\n");
+    write_log(log,"Call stack:=====\n");
     for (int i = 0; i < nptrs; i++) {
-        printf("%s\n", strings[i]);
+        write_log(log, "%s\n", strings[i]);
     }
-    printf("=====\n");
+    write_log(log,"=====\n");
 
     free(strings);
-}
-
-void write_log(FILE *log, const char *format, ...) {
-    va_list args;
-    char buffer[4096];
-    
-    va_start(args, format);
-    vsnprintf(buffer, sizeof(buffer), format, args);
-    va_end(args);
-    
-    printf("%s", buffer);
-    if (log != NULL) {
-        fprintf(log, "%s", buffer);
-    }
+    fclose(log);
 }
 
 void print_process_info(pid_t pid, FILE *log) {
@@ -289,24 +301,24 @@ void print_process_hierarchy(pid_t start_pid, FILE *log) {
     int generation = 1;
     time_t now = time(NULL);
     struct tm *t = localtime(&now);
-    
+
     write_log(log, "\n[%04d-%02d-%02d %02d:%02d:%02d] Process hierarchy for parent of PID %d:\n",
              t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
              t->tm_hour, t->tm_min, t->tm_sec, getpid());
-    
+
     while (current_pid > 1) {
         write_log(log, "Generation %d: ", generation++);
         print_process_info(current_pid, log);
-        
+
         char stat_path[PATH_MAX];
         snprintf(stat_path, sizeof(stat_path), "/proc/%d/stat", current_pid);
-        
+
         FILE *fp = fopen(stat_path, "r");
         if (!fp) {
             write_log(log, "Error opening stat file for PID %d: %s\n", current_pid, strerror(errno));
             break;
         }
-        
+
         pid_t ppid;
         if (fscanf(fp, "%*d %*s %*c %d", &ppid) != 1) {
             fclose(fp);
@@ -314,44 +326,31 @@ void print_process_hierarchy(pid_t start_pid, FILE *log) {
             break;
         }
         fclose(fp);
-        
+
         current_pid = ppid;
     }
-    
+
     write_log(log, "Generation %d: ", generation);
     print_process_info(1, log);
 }
 
 void print_parent_process_name() {
-    pid_t ppid = getppid();
-    char path[256];
-    char name[256];
+    pid_t pid = getpid();
 
-    // Open log file in append mode
-    FILE *log = fopen("/tmp/qat_adf_ctl.log", "a");
+    FILE *log = fopen("/tmp/qat_process.log", "a");
     if (!log) {
         perror("Failed to open log file");
     }
 
-    // Read parent process name from /proc/[ppid]/comm
-    snprintf(path, sizeof(path), "/proc/%d/comm", ppid);
-    FILE *fp = fopen(path, "r");
-    if (fp) {
-        fgets(name, sizeof(name), fp);
-        write_log(log, "\n-----Parent process name: %s-----\n", name);
-        fclose(fp);
-    } else {
-        perror("Failed to open /proc/[ppid]/comm");
-    }
-
     {
-        write_log(log, "---parent stack-------\n");
-        print_process_hierarchy(ppid, log);
-        write_log(log, "----------\n");
+        write_log(log, "--- parent stack ---\n");
+        print_process_hierarchy(pid, log);
+        write_log(log, "--------\n");
     }
     
     fclose(log);
 }
+
 
 int perform_stop_dev(int dev_id)
 {
