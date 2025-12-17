@@ -232,7 +232,8 @@ CpaStatus icp_adf_pollQueue(icp_comms_trans_handle trans_hnd,
         *pRingHandle->in_flight -= msg_counter;
 
         /* Coalesce head writes to reduce impact of MMIO write */
-        if (msg_counter > pRingHandle->coal_write_count)
+        if (msg_counter > pRingHandle->coal_write_count ||
+            ICP_RESP_TYPE_IRQ == pRingHandle->resp)
         {
             pRingHandle->coal_write_count =
                 pRingHandle->min_resps_per_head_write;
@@ -251,9 +252,24 @@ CpaStatus icp_adf_pollQueue(icp_comms_trans_handle trans_hnd,
     }
     else
     {
+        /* Liang added, Re-enable interrupts in case we are using epoll mode */
+        if (ICP_RESP_TYPE_IRQ == pRingHandle->resp)
+        {
+            uint32_t *csr_base_addr = pRingHandle->csr_addr;
+            WRITE_CSR_INT_COL_EN(pRingHandle->bank_offset,
+                                    pRingHandle->bank_data->interrupt_mask);
+        }
+
         return CPA_STATUS_RETRY;
     }
 
+    /* Liang added, Re-enable interrupts in case we are using epoll mode */
+    if (ICP_RESP_TYPE_IRQ == pRingHandle->resp)
+    {
+        uint32_t *csr_base_addr = pRingHandle->csr_addr;
+        WRITE_CSR_INT_COL_EN(pRingHandle->bank_offset,
+                                pRingHandle->bank_data->interrupt_mask);
+    }
     return CPA_STATUS_SUCCESS;
 }
 
