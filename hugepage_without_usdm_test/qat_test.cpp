@@ -16,6 +16,9 @@ extern "C" {
 #include <sys/epoll.h>
 #include <signal.h>
 
+#include "hugepage.h"
+#include "main.h"
+
 #define EPOLL_MAX_EVENTS 1024
 #define SAMPLE_MAX_BUFF 16384
 #define SINGLE_INTER_BUFFLIST 1
@@ -178,22 +181,6 @@ void sampleDcGetInstance(CpaInstanceHandle *pDcInstHandle)
         PRINT_ERR("Also make sure to use config file version 2.\n");
     }
 }
-
-typedef struct {
-    char matedata[2048];
-    char qat_in1[16*1024];
-    char qat_in2[16*1024];
-    char qat_out1[16*1024];
-    char qat_out2[16*1024];
-} db_block_s;
-
-#define HUGE_PAGE_NUM 2
-#define SIZE_8M (8*1024*1024)
-#define SIZE_1G (1024*1024*1024)
-extern int g_blk_num;
-extern db_block_s* g_blks[HUGE_PAGE_NUM*(SIZE_1G/SIZE_8M)];
-
-int mem_virt2phy(const void *virtaddr, uint64_t *physaddr_ptr);
 
 /*
  * This function performs a compression operation.

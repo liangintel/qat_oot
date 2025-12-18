@@ -3,28 +3,52 @@
 #include <cstdlib>
 #include <fcntl.h>
 #include <unistd.h>
-#include <libaio.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <linux/mman.h>
-
-extern "C" {
-#include "qae_mem.h"
-}
-
-// #define FILE_PATH "test_direct_io.dat"
-// #define BUF_SIZE (8*1024*1024) // maximum is 1016*1024*1024 when 1G hugepage implemented
-// #define ALIGN_SIZE (8*1024*1024) // Direct I/O need memory align
-
-#define SIZE_8M (8*1024*1024)
-#define SIZE_1G (1024*1024*1024)
+#include "hugepage.h"
 
 #define CMD_ERROR printf
 
 /* The pfn (page frame number) are bits 0-54 of page. */
 #define PFN_MASK 0x7fffffffffffffULL
 #define PAGEMAP_FILE "/proc/self/pagemap"
+
+typedef struct {
+    void *virtaddr;
+    int hpg_fd;
+    int reserve;
+} hugepage_1g_s;
+
+#define MAX_1G_HUGEPAGE_NUM 1024
+hugepage_1g_s g_hps[MAX_1G_HUGEPAGE_NUM] = {0};
+
+int save_metadata(void *virtaddr, int hpg_fd)
+{
+    // todo: add lock here
+    for (int i = 0; i<MAX_1G_HUGEPAGE_NUM; i++) {
+        if(g_hps[i].hpg_fd) {
+            continue;
+        }
+
+        g_hps[i].virtaddr = virtaddr;
+        g_hps[i].hpg_fd = hpg_fd;
+        return 0;
+    }
+
+    return -1;
+}
+
+int get_metadata_fd(void *virtaddr) {
+    for (int i = 0; i<MAX_1G_HUGEPAGE_NUM; i++) {
+        if(g_hps[i].virtaddr == virtaddr) {
+            return g_hps[i].hpg_fd;
+        }
+    }
+
+    return 0;
+}
 
 /*
  * Use linux system page map file (proc/self/pagemap) to get the physical
@@ -97,10 +121,9 @@ int mem_virt2phy(const void *virtaddr, uint64_t *physaddr_ptr)
     return 0;
 }
 
-//#define HUGEPAGE_FILE_DIR "/dev/hugepages/qat-usdm.XXXXXX"
-#define HUGEPAGE_FILE_DIR "/tmp/qat-usdm.XXXXXX"
+#define HUGEPAGE_FILE_DIR "/dev/hugepages/qat-usdm.XXXXXX"
 #define HUGEPAGE_FILE_LEN (sizeof(HUGEPAGE_FILE_DIR))
-void *hugepage_allocate()
+void *alloc_1g_hugepage()
 {
     void *addr = NULL;
     int ret = 0;
@@ -157,7 +180,31 @@ void *hugepage_allocate()
         return NULL;
     }
 
-    //((dev_mem_info_t *)addr)->hpg_fd = hpg_fd;
+    ret = save_metadata(addr, hpg_fd);
+    if (0 != ret)
+    {
+        munmap(addr, SIZE_1G);
+        CMD_ERROR("%s:%d save_metadata(%s) for hpg_fd failed\n",
+                  __func__,
+                  __LINE__,
+                  hpg_fname);
+        close(hpg_fd);
+        return NULL;
+    }
 
     return addr;
+}
+
+void free_1g_hugepage(void* page_addr)
+{
+    int hpg_fd;
+
+    if(!page_addr)
+        return;
+
+    hpg_fd = get_metadata_fd(page_addr);
+    if(hpg_fd) {
+        munmap(page_addr, SIZE_1G);
+        close(hpg_fd);
+    }
 }

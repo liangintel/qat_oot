@@ -8,6 +8,8 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <linux/mman.h>
+#include "hugepage.h"
+#include "main.h"
 
 extern "C" {
 #include "qae_mem.h"
@@ -27,19 +29,6 @@ inline void check_io_error(int ret, const char* msg) {
     }
 }
 
-void *hugepage_allocate();
-int mem_virt2phy(const void *virtaddr, uint64_t *physaddr_ptr);
-
-#define HUGE_PAGE_NUM 2
-char* g_hugepages[HUGE_PAGE_NUM] = {0};
-
-typedef struct {
-    char matedata[2048];
-    char qat_in1[16*1024];
-    char qat_in2[16*1024];
-    char qat_out[16*1024];
-} db_block_s;
-
 int g_blk_num = 0;
 db_block_s* g_blks[HUGE_PAGE_NUM*(SIZE_1G/SIZE_8M)] = {0};
 
@@ -55,7 +44,7 @@ int aio_test()
 
     // --- hugepage allocation test ---
     for (i = 0; i<HUGE_PAGE_NUM; i++) {
-        g_hugepages[i] = (char*)hugepage_allocate();
+        g_hugepages[i] = (char*)alloc_1g_hugepage();
         // check virtual addr 8MB alignment
         if (0 == g_hugepages[i] || (unsigned long long)g_hugepages[i] % SIZE_8M) {
             std::cerr << "virtual address is not aligned" << std::endl;
